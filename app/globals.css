@@ -7,38 +7,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-/* ─── Design tokens ─────────────────────────────────────────── */
+/* ─── Design tokens (dark-only) ─────────────────────────────── */
 
 :root {
-  /* Backgrounds */
-  --bg:         #f7f6f4;
-  --bg-subtle:  #f0eeec;
-  --surface:    #ffffff;
-  --surface-2:  #f7f6f4;
-
-  /* Borders */
-  --border:        rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.13);
-
-  /* Text */
-  --fg:   #0a0a0b;
-  --fg-2: #52525b;
-  --fg-3: #a1a1aa;
-  --fg-4: #d4d4d8;
-
-  /* Brand accent — soft baby pink */
-  --accent:        #f0b8c8;
-  --accent-hover:  #e8a8ba;
-  --accent-fg:     #1a0d12;
-  --accent-subtle: rgba(240, 184, 200, 0.10);
-  --accent-border: rgba(240, 184, 200, 0.24);
-
-  /* Sidebar */
-  --sidebar-bg:     #ffffff;
-  --sidebar-border: rgba(0, 0, 0, 0.07);
-}
-
-.dark {
   --bg:         #09090b;
   --bg-subtle:  #0c0c0f;
   --surface:    #111113;
@@ -64,7 +35,7 @@
 
 /* ─── Base ──────────────────────────────────────────────────── */
 
-html { color-scheme: light dark; }
+html { color-scheme: dark; }
 
 body {
   background: var(--bg);
@@ -74,6 +45,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ─── Text selection ────────────────────────────────────────── */
+
+::selection {
+  background: rgba(240, 184, 200, 0.32);
+  color: #ffffff;
+}
+
 /* ─── Scrollbar ─────────────────────────────────────────────── */
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -81,8 +59,16 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border-radius: 4px;
+  transition: background 0.15s;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--fg-3); }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-4); }
+
+/* ─── Focus ring ────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 2px;
+}
 
 /* ─── Shimmer skeleton ──────────────────────────────────────── */
 
@@ -105,31 +91,41 @@ body {
 /* ─── Result card entrance ──────────────────────────────────── */
 
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0);    }
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
 }
 
-.fade-in-up          { animation: fadeInUp 0.36s cubic-bezier(0.16,1,0.3,1) forwards; }
-.fade-in-up-delay-1  { opacity:0; animation: fadeInUp 0.36s cubic-bezier(0.16,1,0.3,1) 0.07s forwards; }
-.fade-in-up-delay-2  { opacity:0; animation: fadeInUp 0.36s cubic-bezier(0.16,1,0.3,1) 0.14s forwards; }
-.fade-in-up-delay-3  { opacity:0; animation: fadeInUp 0.36s cubic-bezier(0.16,1,0.3,1) 0.21s forwards; }
-.fade-in-up-delay-4  { opacity:0; animation: fadeInUp 0.36s cubic-bezier(0.16,1,0.3,1) 0.28s forwards; }
-.fade-in-up-delay-5  { opacity:0; animation: fadeInUp 0.36s cubic-bezier(0.16,1,0.3,1) 0.35s forwards; }
+.fade-in-up          { animation: fadeInUp 0.32s cubic-bezier(0.16,1,0.3,1) forwards; }
+.fade-in-up-delay-1  { opacity:0; animation: fadeInUp 0.32s cubic-bezier(0.16,1,0.3,1) 0.06s  forwards; }
+.fade-in-up-delay-2  { opacity:0; animation: fadeInUp 0.32s cubic-bezier(0.16,1,0.3,1) 0.12s  forwards; }
+.fade-in-up-delay-3  { opacity:0; animation: fadeInUp 0.32s cubic-bezier(0.16,1,0.3,1) 0.18s  forwards; }
+.fade-in-up-delay-4  { opacity:0; animation: fadeInUp 0.32s cubic-bezier(0.16,1,0.3,1) 0.24s  forwards; }
+.fade-in-up-delay-5  { opacity:0; animation: fadeInUp 0.32s cubic-bezier(0.16,1,0.3,1) 0.30s  forwards; }
 
-/* ─── Accent button glow ────────────────────────────────────── */
+/* ─── Accent button ─────────────────────────────────────────── */
 
 .btn-accent {
   background: var(--accent);
   color: var(--accent-fg);
-  box-shadow: 0 2px 14px rgba(240, 184, 200, 0.22);
-  transition: background 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 12px rgba(240, 184, 200, 0.20);
+  transition: background 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease, transform 0.12s ease;
+  cursor: pointer;
 }
-.btn-accent:hover {
+.btn-accent:hover:not(:disabled) {
   background: var(--accent-hover);
-  box-shadow: 0 3px 20px rgba(240, 184, 200, 0.35);
+  box-shadow: 0 4px 20px rgba(240, 184, 200, 0.32);
+}
+.btn-accent:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 8px rgba(240, 184, 200, 0.18);
 }
 .btn-accent:disabled {
   background: var(--border-strong);
   color: var(--fg-3);
   box-shadow: none;
+  cursor: not-allowed;
 }
+
+/* ─── Interactive base ──────────────────────────────────────── */
+
+button, a[role="button"], [role="button"] { cursor: pointer; }

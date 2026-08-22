@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
-  Plus, Clock, Bookmark, LayoutTemplate, Settings,
+  Plus, Clock, Bookmark,
   PanelLeftClose, ChevronDown, Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { HistoryItem } from '@/lib/types';
 
 /* ─── Brand mark ────────────────────────────────────────────── */
 
@@ -21,7 +23,7 @@ function RMark({ size = 24 }: { size?: number }) {
         background: 'var(--accent)',
         fontSize: Math.round(size * 0.52),
         letterSpacing: '-0.02em',
-        boxShadow: '0 1px 6px rgba(240,184,200,0.30)',
+        boxShadow: '0 1px 6px rgba(240,184,200,0.28)',
       }}
     >
       R
@@ -32,17 +34,9 @@ function RMark({ size = 24 }: { size?: number }) {
 /* ─── Nav data ──────────────────────────────────────────────── */
 
 const NAV_ITEMS = [
-  { label: 'New Repurpose', href: '/', icon: Plus,          active: true  },
-  { label: 'History',       href: '#', icon: Clock,         active: false },
-  { label: 'Saved',         href: '#', icon: Bookmark,      active: false },
-  { label: 'Templates',     href: '#', icon: LayoutTemplate, active: false },
-  { label: 'Settings',      href: '#', icon: Settings,      active: false },
-];
-
-const RECENT_ITEMS = [
-  { label: 'Thread on content depth', time: '2h' },
-  { label: 'Personal branding post',  time: '1d' },
-  { label: 'LinkedIn carousel ideas', time: '3d' },
+  { label: 'New Repurpose', href: '/',        icon: Plus     },
+  { label: 'History',       href: '/history', icon: Clock    },
+  { label: 'Saved',         href: '/saved',   icon: Bookmark },
 ];
 
 /* ─── Sidebar ───────────────────────────────────────────────── */
@@ -52,15 +46,41 @@ interface SidebarProps {
   onMobileClose: () => void;
 }
 
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return 'now';
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  return `${d}d`;
+}
+
 export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed]     = useState(false);
+  const [recent, setRecent]           = useState<HistoryItem[]>([]);
+  const pathname = usePathname();
+
+  const loadRecent = useCallback(async () => {
+    try {
+      const res = await fetch('/api/history');
+      if (!res.ok) return;
+      const data = await res.json() as { items?: HistoryItem[] };
+      setRecent((data.items ?? []).slice(0, 5));
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => {
+    loadRecent();
+  }, [loadRecent, pathname]); // reload on route change so sidebar stays fresh
 
   return (
     <>
       {/* Mobile scrim */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
           onClick={onMobileClose}
         />
       )}
@@ -68,11 +88,8 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
       <aside
         className={cn(
           'fixed top-0 left-0 h-full z-50 flex flex-col shrink-0',
-          'transition-[width,transform,visibility] duration-200 ease-in-out',
           'border-r overflow-hidden',
-          /* Desktop collapse */
           collapsed ? 'lg:w-[60px]' : 'lg:w-[228px]',
-          /* Mobile drawer */
           'w-[228px]',
           'lg:relative lg:translate-x-0 lg:z-auto',
           mobileOpen
@@ -82,6 +99,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         style={{
           background: 'var(--sidebar-bg)',
           borderColor: 'var(--sidebar-border)',
+          transition: 'width 0.22s cubic-bezier(0.4,0,0.2,1), transform 0.22s cubic-bezier(0.4,0,0.2,1), visibility 0.22s',
         }}
       >
         {/* ── Header ── */}
@@ -90,16 +108,17 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           style={{ borderColor: 'var(--border)' }}
         >
           {collapsed ? (
-            /* Collapsed: RMark centered, clicking it expands — desktop only */
             <button
               onClick={() => setCollapsed(false)}
-              className="hidden lg:flex w-full h-full items-center justify-center rounded-none transition-colors hover:bg-[var(--border)]"
+              className="hidden lg:flex w-full h-full items-center justify-center cursor-pointer"
+              style={{ transition: 'background 0.15s ease' }}
               aria-label="Expand sidebar"
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--border)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
               <RMark size={26} />
             </button>
           ) : (
-            /* Expanded: logo left, collapse button right */
             <div className="flex items-center justify-between w-full px-3">
               <div className="flex items-center gap-2.5 min-w-0">
                 <RMark size={26} />
@@ -110,13 +129,22 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                   Repurpose
                 </span>
               </div>
-
-              {/* Collapse toggle — desktop only */}
               <button
                 onClick={() => setCollapsed(true)}
-                className="hidden lg:flex items-center justify-center w-6 h-6 rounded-md transition-colors shrink-0 hover:bg-[var(--border)]"
-                style={{ color: 'var(--fg-3)' }}
+                className="hidden lg:flex items-center justify-center w-7 h-7 rounded-md cursor-pointer shrink-0"
+                style={{
+                  color: 'var(--fg-4)',
+                  transition: 'background 0.15s ease, color 0.15s ease',
+                }}
                 aria-label="Collapse sidebar"
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'var(--border)';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'var(--fg-2)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'var(--fg-4)';
+                }}
               >
                 <PanelLeftClose className="w-3.5 h-3.5" strokeWidth={1.75} />
               </button>
@@ -126,40 +154,57 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
         {/* ── Navigation ── */}
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-          {NAV_ITEMS.map(({ label, href, icon: Icon, active }) => (
-            <Link
-              key={label}
-              href={href}
-              title={collapsed ? label : undefined}
-              className={cn(
-                'flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-[13px] font-medium transition-colors group relative',
-                collapsed && 'lg:justify-center lg:px-0',
-                active
-                  ? 'text-[var(--fg)]'
-                  : 'hover:bg-[var(--border)] text-[var(--fg-3)] hover:text-[var(--fg-2)]',
-              )}
-              style={active ? { background: 'var(--accent-subtle)' } : undefined}
-              onClick={onMobileClose}
-            >
-              <Icon
-                className="w-4 h-4 shrink-0"
-                style={{ color: active ? 'var(--accent)' : undefined }}
-                strokeWidth={active ? 2 : 1.75}
-              />
-              {!collapsed && (
-                <span className="truncate">{label}</span>
-              )}
-              {active && !collapsed && (
-                <span
-                  className="ml-auto w-1 h-1 rounded-full shrink-0"
-                  style={{ background: 'var(--accent)' }}
+          {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+            const active = pathname === href;
+            return (
+              <Link
+                key={label}
+                href={href}
+                title={collapsed ? label : undefined}
+                className={cn(
+                  'flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-[13px] font-medium group relative cursor-pointer',
+                  collapsed && 'lg:justify-center lg:px-0',
+                )}
+                style={{
+                  color: active ? 'var(--fg)' : 'var(--fg-3)',
+                  background: active ? 'var(--accent-subtle)' : 'transparent',
+                  transition: 'background 0.15s ease, color 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) {
+                    (e.currentTarget as HTMLAnchorElement).style.background = 'var(--border)';
+                    (e.currentTarget as HTMLAnchorElement).style.color = 'var(--fg-2)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) {
+                    (e.currentTarget as HTMLAnchorElement).style.background = 'transparent';
+                    (e.currentTarget as HTMLAnchorElement).style.color = 'var(--fg-3)';
+                  }
+                }}
+                onClick={onMobileClose}
+              >
+                <Icon
+                  className="w-4 h-4 shrink-0"
+                  style={{
+                    color: active ? 'var(--accent)' : 'inherit',
+                    transition: 'color 0.15s ease',
+                  }}
+                  strokeWidth={active ? 2 : 1.75}
                 />
-              )}
-            </Link>
-          ))}
+                {!collapsed && <span className="truncate">{label}</span>}
+                {active && !collapsed && (
+                  <span
+                    className="ml-auto w-1 h-1 rounded-full shrink-0"
+                    style={{ background: 'var(--accent)' }}
+                  />
+                )}
+              </Link>
+            );
+          })}
 
-          {/* Recent */}
-          {!collapsed && (
+          {/* ── Recent history ── */}
+          {!collapsed && recent.length > 0 && (
             <>
               <div className="pt-4 pb-1 px-2.5">
                 <p
@@ -169,15 +214,33 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                   Recent
                 </p>
               </div>
-              {RECENT_ITEMS.map(({ label, time }) => (
-                <button
-                  key={label}
-                  className="w-full flex items-center justify-between gap-2 px-2.5 py-[7px] rounded-lg text-[12.5px] transition-colors text-left hover:bg-[var(--border)]"
-                  style={{ color: 'var(--fg-3)' }}
+              {recent.map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/history`}
+                  className="w-full flex items-center justify-between gap-2 px-2.5 py-[7px] rounded-lg text-[12.5px] text-left cursor-pointer"
+                  style={{
+                    color: 'var(--fg-3)',
+                    transition: 'background 0.15s ease, color 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLAnchorElement).style.background = 'var(--border)';
+                    (e.currentTarget as HTMLAnchorElement).style.color = 'var(--fg-2)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLAnchorElement).style.background = 'transparent';
+                    (e.currentTarget as HTMLAnchorElement).style.color = 'var(--fg-3)';
+                  }}
+                  onClick={onMobileClose}
                 >
-                  <span className="truncate">{label}</span>
-                  <span className="shrink-0 text-[11px]" style={{ color: 'var(--fg-4)' }}>{time}</span>
-                </button>
+                  <span className="truncate">
+                    {item.original_content.slice(0, 38).trim()}
+                    {item.original_content.length > 38 ? '…' : ''}
+                  </span>
+                  <span className="shrink-0 text-[11px]" style={{ color: 'var(--fg-4)' }}>
+                    {timeAgo(item.created_at)}
+                  </span>
+                </Link>
               ))}
             </>
           )}
@@ -198,8 +261,14 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                 3 of 10 repurposes used this month.
               </p>
               <button
-                className="w-full py-1.5 rounded-lg text-[11.5px] font-semibold transition-colors"
-                style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
+                className="w-full py-1.5 rounded-lg text-[11.5px] font-semibold cursor-pointer"
+                style={{
+                  background: 'var(--accent)',
+                  color: 'var(--accent-fg)',
+                  transition: 'background 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-hover)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent)')}
               >
                 Upgrade to Pro
               </button>
@@ -209,8 +278,10 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           <div className="p-2 flex justify-center shrink-0">
             <button
               title="Upgrade to Pro"
-              className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--border)]"
-              style={{ color: 'var(--accent)' }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer"
+              style={{ color: 'var(--accent)', transition: 'background 0.15s ease' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-subtle)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
               <Zap className="w-4 h-4" strokeWidth={2} />
             </button>
@@ -218,13 +289,13 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         )}
 
         {/* ── User profile ── */}
-        <div
-          className="p-2 shrink-0 border-t"
-          style={{ borderColor: 'var(--border)' }}
-        >
+        <div className="p-2 shrink-0 border-t" style={{ borderColor: 'var(--border)' }}>
           {!collapsed ? (
             <button
-              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-colors hover:bg-[var(--border)] group"
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer"
+              style={{ transition: 'background 0.15s ease' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--border)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
               <Avatar />
               <div className="flex-1 min-w-0 text-left">

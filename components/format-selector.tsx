@@ -29,28 +29,37 @@ export function FormatSelector({ selected, onToggle }: FormatSelectorProps) {
           <button
             key={id}
             onClick={() => onToggle(id)}
-            className={cn(
-              'relative flex items-start gap-3 p-3.5 rounded-xl text-left',
-              'transition-all duration-150 focus:outline-none group',
-            )}
+            className={cn('relative flex items-start gap-3 p-3.5 rounded-xl text-left cursor-pointer')}
             style={{
               background: isSelected ? 'var(--accent-subtle)' : 'var(--surface)',
               border: `1px solid ${isSelected ? 'var(--accent-border)' : 'var(--border)'}`,
-              boxShadow: isSelected
-                ? '0 0 0 1px var(--accent-border)'
-                : 'none',
+              boxShadow: isSelected ? '0 0 0 1px var(--accent-border)' : 'none',
+              transition: 'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease',
             }}
             aria-pressed={isSelected}
             onMouseEnter={(e) => {
-              if (!isSelected)
-                (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-strong)';
+              const el = e.currentTarget as HTMLButtonElement;
+              if (!isSelected) {
+                el.style.borderColor = 'var(--border-strong)';
+                el.style.background = 'var(--surface-2)';
+              }
+              el.style.transform = 'translateY(-1px)';
             }}
             onMouseLeave={(e) => {
-              if (!isSelected)
-                (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)';
+              const el = e.currentTarget as HTMLButtonElement;
+              if (!isSelected) {
+                el.style.borderColor = 'var(--border)';
+                el.style.background = 'var(--surface)';
+              }
+              el.style.transform = 'translateY(0)';
+            }}
+            onMouseDown={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0) scale(0.99)';
+            }}
+            onMouseUp={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)';
             }}
           >
-            {/* Checkmark indicator */}
             {isSelected && (
               <div
                 className="absolute top-2.5 right-2.5 w-4 h-4 rounded-full flex items-center justify-center"
@@ -61,20 +70,29 @@ export function FormatSelector({ selected, onToggle }: FormatSelectorProps) {
             )}
 
             <Icon
-              className="w-4 h-4 shrink-0 mt-0.5 transition-colors"
-              style={{ color: isSelected ? 'var(--accent)' : 'var(--fg-3)' }}
+              className="w-4 h-4 shrink-0 mt-0.5"
+              style={{
+                color: isSelected ? 'var(--accent)' : 'var(--fg-3)',
+                transition: 'color 0.18s ease',
+              }}
               strokeWidth={1.75}
             />
             <div className="min-w-0">
               <p
                 className="text-[13px] font-medium leading-none mb-1.5"
-                style={{ color: isSelected ? 'var(--fg)' : 'var(--fg-2)' }}
+                style={{
+                  color: isSelected ? 'var(--fg)' : 'var(--fg-2)',
+                  transition: 'color 0.18s ease',
+                }}
               >
                 {label}
               </p>
               <p
                 className="text-[11px] leading-none"
-                style={{ color: isSelected ? 'var(--fg-3)' : 'var(--fg-4)' }}
+                style={{
+                  color: isSelected ? 'var(--fg-3)' : 'var(--fg-4)',
+                  transition: 'color 0.18s ease',
+                }}
               >
                 {description}
               </p>
