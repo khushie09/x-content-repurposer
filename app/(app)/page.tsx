@@ -8,6 +8,7 @@ import { ToneSelector } from '@/components/tone-selector';
 import { ResultsSection } from '@/components/results-section';
 import { LoadingSkeleton } from '@/components/loading-skeleton';
 import { HeroDecoration } from '@/components/hero-decoration';
+import { authedFetch } from '@/lib/authed-fetch';
 import type { RepurposeResult, RepurposeResponse } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -36,7 +37,7 @@ export default function Home() {
     setHistoryId(undefined);
 
     try {
-      const res = await fetch('/api/repurpose', {
+      const res = await authedFetch('/api/repurpose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

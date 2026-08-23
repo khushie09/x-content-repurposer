@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Bookmark, Loader2, AlertCircle, Copy, Check, Trash2 } from 'lucide-react';
 import { useSearch } from '@/lib/search-context';
+import { authedFetch } from '@/lib/authed-fetch';
 import type { SavedItem } from '@/lib/types';
 
 function timeAgo(dateStr: string): string {
@@ -25,7 +26,7 @@ export default function SavedPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/saved');
+      const res = await authedFetch('/api/saved');
       if (!res.ok) throw new Error('Failed to load');
       const data = (await res.json()) as { items: SavedItem[] };
       setItems(data.items ?? []);
@@ -40,7 +41,7 @@ export default function SavedPage() {
 
   const handleUnsave = async (id: string) => {
     try {
-      const res = await fetch(`/api/saved/${id}`, { method: 'DELETE' });
+      const res = await authedFetch(`/api/saved/${id}`, { method: 'DELETE' });
       if (res.ok) setItems((prev) => prev.filter((i) => i.id !== id));
     } catch { /* silent */ }
   };
@@ -68,14 +69,13 @@ export default function SavedPage() {
             Saved
           </h1>
           <p className="text-[13px]" style={{ color: 'var(--fg-3)' }}>
-            Content you've bookmarked, ready to use.
+            Content you&apos;ve bookmarked, ready to use.
           </p>
         </div>
       </div>
 
       <div style={{ height: 1, background: 'var(--border)' }} />
 
-      {/* States */}
       {loading && (
         <div className="flex items-center gap-2 py-12 justify-center" style={{ color: 'var(--fg-3)' }}>
           <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.75} />
@@ -121,7 +121,7 @@ export default function SavedPage() {
 }
 
 function SavedCard({ item, onUnsave }: { item: SavedItem; onUnsave: (id: string) => void }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied]   = useState(false);
   const [removing, setRemoving] = useState(false);
 
   const handleCopy = async () => {
@@ -157,7 +157,6 @@ function SavedCard({ item, onUnsave }: { item: SavedItem; onUnsave: (id: string)
         el.style.borderColor = 'var(--border)';
       }}
     >
-      {/* Header */}
       <div
         className="flex items-center justify-between px-4 py-3 shrink-0"
         style={{ borderBottom: '1px solid var(--border)' }}
@@ -182,14 +181,12 @@ function SavedCard({ item, onUnsave }: { item: SavedItem; onUnsave: (id: string)
         </span>
       </div>
 
-      {/* Content */}
       <div className="flex-1 px-4 py-4">
         <p className="text-[13px] leading-[1.75] whitespace-pre-wrap" style={{ color: 'var(--fg-2)' }}>
           {item.content}
         </p>
       </div>
 
-      {/* Actions */}
       <div
         className="flex items-center gap-0.5 px-3 py-2.5 shrink-0"
         style={{ borderTop: '1px solid var(--border)' }}

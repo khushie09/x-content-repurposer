@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getUserFromRequest } from '@/lib/server-auth';
 import type { RepurposeResult } from '@/lib/types';
 
 const GEMINI_MODEL = 'gemini-3.6-flash';
@@ -36,10 +37,11 @@ interface GeminiResponse {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const authed = await getUserFromRequest(req);
+  if (!authed) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: 'API key not configured.' }, { status: 500 });
-  }
+  if (!apiKey) return NextResponse.json({ error: 'API key not configured.' }, { status: 500 });
 
   let body: unknown;
   try { body = await req.json(); } catch {
@@ -52,15 +54,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     tone?: unknown;
   };
 
-  if (typeof content !== 'string' || content.trim().length === 0) {
+  if (typeof content !== 'string' || content.trim().length === 0)
     return NextResponse.json({ error: 'content is required.' }, { status: 400 });
-  }
-  if (typeof format !== 'string' || !FORMAT_META[format]) {
+  if (typeof format !== 'string' || !FORMAT_META[format])
     return NextResponse.json({ error: 'Invalid format.' }, { status: 400 });
-  }
-  if (typeof tone !== 'string') {
+  if (typeof tone !== 'string')
     return NextResponse.json({ error: 'tone is required.' }, { status: 400 });
-  }
 
   const toneDesc = TONE_DESCRIPTIONS[tone] ?? tone;
   const formatSpec = FORMAT_SPECS[format];
@@ -101,26 +100,20 @@ RESPONSE FORMAT:
       }),
     });
     geminiRaw = (await res.json()) as GeminiResponse;
-    if (!res.ok) {
-      return NextResponse.json({ error: 'AI generation failed.' }, { status: 502 });
-    }
+    if (!res.ok) return NextResponse.json({ error: 'AI generation failed.' }, { status: 502 });
   } catch {
     return NextResponse.json({ error: 'Could not reach AI service.' }, { status: 502 });
   }
 
   const rawText = geminiRaw?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!rawText) {
-    return NextResponse.json({ error: 'AI returned an empty response.' }, { status: 502 });
-  }
+  if (!rawText) return NextResponse.json({ error: 'AI returned an empty response.' }, { status: 502 });
 
   let parsed: { content?: string };
   try { parsed = JSON.parse(rawText) as { content?: string }; } catch {
     return NextResponse.json({ error: 'AI response was malformed.' }, { status: 502 });
   }
 
-  if (!parsed.content) {
-    return NextResponse.json({ error: 'AI did not generate content.' }, { status: 502 });
-  }
+  if (!parsed.content) return NextResponse.json({ error: 'AI did not generate content.' }, { status: 502 });
 
   const meta = FORMAT_META[format];
   const result: RepurposeResult = {

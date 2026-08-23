@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, Loader2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useSearch } from '@/lib/search-context';
+import { authedFetch } from '@/lib/authed-fetch';
 import type { HistoryItem, RepurposeResult } from '@/lib/types';
 
 function timeAgo(dateStr: string): string {
@@ -30,7 +31,7 @@ export default function HistoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/history');
+      const res = await authedFetch('/api/history');
       if (!res.ok) throw new Error('Failed to load');
       const data = (await res.json()) as { items: HistoryItem[] };
       setItems(data.items ?? []);
@@ -72,7 +73,6 @@ export default function HistoryPage() {
 
       <div style={{ height: 1, background: 'var(--border)' }} />
 
-      {/* States */}
       {loading && (
         <div className="flex items-center gap-2 py-12 justify-center" style={{ color: 'var(--fg-3)' }}>
           <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.75} />
@@ -123,12 +123,8 @@ function HistoryCard({ item }: { item: HistoryItem }) {
   return (
     <div
       className="rounded-2xl overflow-hidden"
-      style={{
-        background: 'var(--surface)',
-        border: '1px solid var(--border)',
-      }}
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
     >
-      {/* Summary row */}
       <button
         onClick={() => setExpanded((e) => !e)}
         className="w-full flex items-start gap-3 px-4 py-4 text-left cursor-pointer"
@@ -169,7 +165,6 @@ function HistoryCard({ item }: { item: HistoryItem }) {
         </div>
       </button>
 
-      {/* Expanded outputs */}
       {expanded && (
         <div style={{ borderTop: '1px solid var(--border)' }}>
           <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -177,10 +172,7 @@ function HistoryCard({ item }: { item: HistoryItem }) {
               <div
                 key={r.id}
                 className="rounded-xl p-3 space-y-2"
-                style={{
-                  background: 'var(--bg-subtle, var(--bg))',
-                  border: '1px solid var(--border)',
-                }}
+                style={{ background: 'var(--bg-subtle, var(--bg))', border: '1px solid var(--border)' }}
               >
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-semibold" style={{ color: 'var(--fg-2)' }}>{r.platform}</span>

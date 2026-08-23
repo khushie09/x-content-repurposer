@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Copy, Bookmark, RefreshCw, Check, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { authedFetch } from '@/lib/authed-fetch';
 import type { RepurposeResult, SavedItem } from '@/lib/types';
 
 interface OutputCardProps {
@@ -24,12 +25,12 @@ export function OutputCard({
   onRegenerate,
   initialSavedId,
 }: OutputCardProps) {
-  const [content, setContent]         = useState(result.content);
-  const [copied, setCopied]           = useState(false);
-  const [savedId, setSavedId]         = useState<string | undefined>(initialSavedId);
-  const [isSaving, setIsSaving]       = useState(false);
-  const [isRegenerating, setIsRegen]  = useState(false);
-  const [regenError, setRegenError]   = useState<string | null>(null);
+  const [content, setContent]        = useState(result.content);
+  const [copied, setCopied]          = useState(false);
+  const [savedId, setSavedId]        = useState<string | undefined>(initialSavedId);
+  const [isSaving, setIsSaving]      = useState(false);
+  const [isRegenerating, setIsRegen] = useState(false);
+  const [regenError, setRegenError]  = useState<string | null>(null);
 
   const isSaved = !!savedId;
 
@@ -46,10 +47,10 @@ export function OutputCard({
     setIsSaving(true);
     try {
       if (isSaved) {
-        const res = await fetch(`/api/saved/${savedId}`, { method: 'DELETE' });
+        const res = await authedFetch(`/api/saved/${savedId}`, { method: 'DELETE' });
         if (res.ok) setSavedId(undefined);
       } else {
-        const res = await fetch('/api/saved', {
+        const res = await authedFetch('/api/saved', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -75,7 +76,7 @@ export function OutputCard({
     setIsRegen(true);
     setRegenError(null);
     try {
-      const res = await fetch('/api/regenerate', {
+      const res = await authedFetch('/api/regenerate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -91,7 +92,7 @@ export function OutputCard({
       }
       if (data.result) {
         setContent(data.result.content);
-        setSavedId(undefined); // unsave since content changed
+        setSavedId(undefined);
         onRegenerate?.(data.result);
       }
     } catch {

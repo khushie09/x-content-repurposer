@@ -2,12 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Plus, Clock, Bookmark,
-  PanelLeftClose, ChevronDown, Zap,
+  PanelLeftClose, ChevronDown, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase';
+import { authedFetch } from '@/lib/authed-fetch';
 import type { HistoryItem } from '@/lib/types';
 
 /* ─── Brand mark ────────────────────────────────────────────── */
@@ -39,12 +42,7 @@ const NAV_ITEMS = [
   { label: 'Saved',         href: '/saved',   icon: Bookmark },
 ];
 
-/* ─── Sidebar ───────────────────────────────────────────────── */
-
-interface SidebarProps {
-  mobileOpen: boolean;
-  onMobileClose: () => void;
-}
+/* ─── Helpers ───────────────────────────────────────────────── */
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -57,23 +55,79 @@ function timeAgo(dateStr: string): string {
   return `${d}d`;
 }
 
-export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
-  const [collapsed, setCollapsed]     = useState(false);
-  const [recent, setRecent]           = useState<HistoryItem[]>([]);
-  const pathname = usePathname();
+function getInitials(email?: string | null, name?: string | null): string {
+  if (name) {
+    const parts = name.trim().split(/\s+/);
+    return parts.length >= 2
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : parts[0].slice(0, 2).toUpperCase();
+  }
+  if (email) return email[0].toUpperCase();
+  return '?';
+}
 
-  const loadRecent = useCallback(async () => {
+function getDisplayName(email?: string | null, name?: string | null): string {
+  if (name) {
+    // Show first name + last initial if name is long
+    const parts = name.trim().split(/\s+/);
+    return parts.length >= 2 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : name;
+  }
+  if (email) {
+    const prefix = email.split('@')[0];
+    return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+  }
+  return 'Account';
+}
+
+/* ─── Sidebar ───────────────────────────────────────────────── */
+
+interface SidebarProps {
+  mobileOpen: boolean;
+  onMobileClose: () => void;
+}
+
+interface UsageState { count: number; limit: number }
+
+export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [recent, setRecent]       = useState<HistoryItem[]>([]);
+  const [usage, setUsage]         = useState<UsageState | null>(null);
+  const pathname = usePathname();
+  const router   = useRouter();
+  const { user } = useAuth();
+
+  const loadData = useCallback(async () => {
     try {
-      const res = await fetch('/api/history');
-      if (!res.ok) return;
-      const data = await res.json() as { items?: HistoryItem[] };
-      setRecent((data.items ?? []).slice(0, 5));
+      const [histRes, usageRes] = await Promise.all([
+        authedFetch('/api/history'),
+        authedFetch('/api/usage'),
+      ]);
+      if (histRes.ok) {
+        const d = await histRes.json() as { items?: HistoryItem[] };
+        setRecent((d.items ?? []).slice(0, 5));
+      }
+      if (usageRes.ok) {
+        const d = await usageRes.json() as { count: number; limit: number };
+        setUsage(d);
+      }
     } catch { /* silent */ }
   }, []);
 
   useEffect(() => {
-    loadRecent();
-  }, [loadRecent, pathname]); // reload on route change so sidebar stays fresh
+    loadData();
+  }, [loadData, pathname]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.replace('/login');
+  };
+
+  const usageCount = usage?.count ?? 0;
+  const usageLimit = usage?.limit ?? 10;
+  const usagePct   = Math.min((usageCount / usageLimit) * 100, 100);
+
+  const initials    = getInitials(user?.email, user?.user_metadata?.full_name as string | null);
+  const displayName = getDisplayName(user?.email, user?.user_metadata?.full_name as string | null);
 
   return (
     <>
@@ -132,10 +186,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               <button
                 onClick={() => setCollapsed(true)}
                 className="hidden lg:flex items-center justify-center w-7 h-7 rounded-md cursor-pointer shrink-0"
-                style={{
-                  color: 'var(--fg-4)',
-                  transition: 'background 0.15s ease, color 0.15s ease',
-                }}
+                style={{ color: 'var(--fg-4)', transition: 'background 0.15s ease, color 0.15s ease' }}
                 aria-label="Collapse sidebar"
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.background = 'var(--border)';
@@ -186,10 +237,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               >
                 <Icon
                   className="w-4 h-4 shrink-0"
-                  style={{
-                    color: active ? 'var(--accent)' : 'inherit',
-                    transition: 'color 0.15s ease',
-                  }}
+                  style={{ color: active ? 'var(--accent)' : 'inherit', transition: 'color 0.15s ease' }}
                   strokeWidth={active ? 2 : 1.75}
                 />
                 {!collapsed && <span className="truncate">{label}</span>}
@@ -207,22 +255,16 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           {!collapsed && recent.length > 0 && (
             <>
               <div className="pt-4 pb-1 px-2.5">
-                <p
-                  className="text-[10px] font-semibold uppercase tracking-[0.09em]"
-                  style={{ color: 'var(--fg-4)' }}
-                >
+                <p className="text-[10px] font-semibold uppercase tracking-[0.09em]" style={{ color: 'var(--fg-4)' }}>
                   Recent
                 </p>
               </div>
               {recent.map((item) => (
                 <Link
                   key={item.id}
-                  href={`/history`}
+                  href="/history"
                   className="w-full flex items-center justify-between gap-2 px-2.5 py-[7px] rounded-lg text-[12.5px] text-left cursor-pointer"
-                  style={{
-                    color: 'var(--fg-3)',
-                    transition: 'background 0.15s ease, color 0.15s ease',
-                  }}
+                  style={{ color: 'var(--fg-3)', transition: 'background 0.15s ease, color 0.15s ease' }}
                   onMouseEnter={(e) => {
                     (e.currentTarget as HTMLAnchorElement).style.background = 'var(--border)';
                     (e.currentTarget as HTMLAnchorElement).style.color = 'var(--fg-2)';
@@ -246,71 +288,88 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           )}
         </nav>
 
-        {/* ── Upgrade card ── */}
-        {!collapsed ? (
+        {/* ── Free Plan card ── */}
+        {!collapsed && (
           <div className="p-2 shrink-0">
             <div
               className="rounded-xl p-3"
               style={{ background: 'var(--accent-subtle)', border: '1px solid var(--accent-border)' }}
             >
-              <div className="flex items-center gap-1.5 mb-1">
-                <Zap className="w-3 h-3" style={{ color: 'var(--accent)' }} strokeWidth={2} />
+              <div className="flex items-center justify-between mb-2">
                 <span className="text-[12px] font-semibold" style={{ color: 'var(--fg)' }}>Free Plan</span>
+                <span className="text-[11px] tabular-nums" style={{ color: 'var(--accent)' }}>
+                  {usageCount} / {usageLimit}
+                </span>
               </div>
-              <p className="text-[11px] mb-2.5 leading-relaxed" style={{ color: 'var(--fg-3)' }}>
-                3 of 10 repurposes used this month.
-              </p>
-              <button
-                className="w-full py-1.5 rounded-lg text-[11.5px] font-semibold cursor-pointer"
-                style={{
-                  background: 'var(--accent)',
-                  color: 'var(--accent-fg)',
-                  transition: 'background 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-hover)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent)')}
+
+              {/* Progress bar */}
+              <div
+                className="w-full rounded-full overflow-hidden mb-2"
+                style={{ height: 3, background: 'rgba(240,184,200,0.15)' }}
               >
-                Upgrade to Pro
-              </button>
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${usagePct}%`,
+                    background: 'var(--accent)',
+                    transition: 'width 0.4s ease',
+                  }}
+                />
+              </div>
+
+              <p className="text-[11px] leading-relaxed" style={{ color: 'var(--fg-3)' }}>
+                {usageLimit - usageCount > 0
+                  ? `${usageLimit - usageCount} repurpose${usageLimit - usageCount !== 1 ? 's' : ''} remaining this month`
+                  : 'Monthly limit reached. Resets on the 1st.'}
+              </p>
             </div>
-          </div>
-        ) : (
-          <div className="p-2 flex justify-center shrink-0">
-            <button
-              title="Upgrade to Pro"
-              className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer"
-              style={{ color: 'var(--accent)', transition: 'background 0.15s ease' }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-subtle)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <Zap className="w-4 h-4" strokeWidth={2} />
-            </button>
           </div>
         )}
 
         {/* ── User profile ── */}
         <div className="p-2 shrink-0 border-t" style={{ borderColor: 'var(--border)' }}>
           {!collapsed ? (
-            <button
-              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer"
-              style={{ transition: 'background 0.15s ease' }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--border)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <Avatar />
-              <div className="flex-1 min-w-0 text-left">
-                <p className="text-[13px] font-medium truncate leading-none mb-0.5" style={{ color: 'var(--fg)' }}>
-                  Khushi C.
-                </p>
-                <p className="text-[11px] leading-none" style={{ color: 'var(--fg-3)' }}>
-                  Free plan
-                </p>
-              </div>
-              <ChevronDown className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--fg-4)' }} strokeWidth={2} />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                className="flex-1 flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer min-w-0"
+                style={{ transition: 'background 0.15s ease' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--border)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                onClick={() => {}} // Profile action handled via topbar dropdown
+              >
+                <Avatar initials={initials} />
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-[13px] font-medium truncate leading-none mb-0.5" style={{ color: 'var(--fg)' }}>
+                    {displayName}
+                  </p>
+                  <p className="text-[11px] leading-none" style={{ color: 'var(--fg-3)' }}>
+                    Free plan
+                  </p>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--fg-4)' }} strokeWidth={2} />
+              </button>
+
+              {/* Logout shortcut */}
+              <button
+                onClick={handleLogout}
+                title="Log out"
+                className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 cursor-pointer"
+                style={{ color: 'var(--fg-4)', transition: 'background 0.15s ease, color 0.15s ease' }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.08)';
+                  (e.currentTarget as HTMLButtonElement).style.color = '#f87171';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'var(--fg-4)';
+                }}
+              >
+                <LogOut className="w-3.5 h-3.5" strokeWidth={1.75} />
+              </button>
+            </div>
           ) : (
             <div className="flex justify-center">
-              <Avatar />
+              <Avatar initials={initials} />
             </div>
           )}
         </div>
@@ -319,7 +378,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   );
 }
 
-function Avatar() {
+function Avatar({ initials }: { initials: string }) {
   return (
     <div
       className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0 select-none"
@@ -328,7 +387,7 @@ function Avatar() {
         color: '#f4f4f5',
       }}
     >
-      K
+      {initials}
     </div>
   );
 }

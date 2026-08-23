@@ -1,10 +1,14 @@
-import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { NextRequest, NextResponse } from 'next/server';
+import { getUserFromRequest } from '@/lib/server-auth';
 
-export async function GET() {
-  const { data, error } = await supabase
+export async function GET(req: NextRequest) {
+  const authed = await getUserFromRequest(req);
+  if (!authed) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { data, error } = await authed.client
     .from('history')
     .select('id, original_content, selected_formats, tone, generated_results, created_at')
+    .eq('user_id', authed.userId)
     .order('created_at', { ascending: false })
     .limit(50);
 

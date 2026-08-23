@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getUserFromRequest } from '@/lib/server-auth';
 import type { RepurposeResult } from '@/lib/types';
 
 const GEMINI_MODEL = 'gemini-3.6-flash';
 const GEMINI_BASE  = 'https://generativelanguage.googleapis.com/v1beta/models';
+const FREE_LIMIT   = 10;
 
 const FORMAT_META: Record<string, { type: string; platform: string }> = {
   'x-post':   { type: 'Tweet',   platform: 'X / Twitter'         },
@@ -78,16 +79,16 @@ interface GeminiResult {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: 'API key not configured.' }, { status: 500 });
-  }
+  // ── Auth ──
+  const authed = await getUserFromRequest(req);
+  if (!authed) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  /* ── Parse + validate body ── */
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return NextResponse.json({ error: 'API key not configured.' }, { status: 500 });
+
+  // ── Parse + validate body ──
   let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
+  try { body = await req.json(); } catch {
     return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
   }
 
@@ -97,25 +98,37 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     tone?: unknown;
   };
 
-  if (typeof content !== 'string' || content.trim().length === 0) {
+  if (typeof content !== 'string' || content.trim().length === 0)
     return NextResponse.json({ error: 'content is required.' }, { status: 400 });
-  }
-  if (!Array.isArray(formats) || formats.length === 0) {
+  if (!Array.isArray(formats) || formats.length === 0)
     return NextResponse.json({ error: 'formats must be a non-empty array.' }, { status: 400 });
-  }
-  if (typeof tone !== 'string') {
+  if (typeof tone !== 'string')
     return NextResponse.json({ error: 'tone is required.' }, { status: 400 });
-  }
 
   const validFormats = Object.keys(FORMAT_META);
   const cleanFormats = (formats as string[]).filter((f) => validFormats.includes(f));
-  if (cleanFormats.length === 0) {
+  if (cleanFormats.length === 0)
     return NextResponse.json({ error: 'No valid formats specified.' }, { status: 400 });
+
+  const cleanContent = content.trim().slice(0, 8000);
+
+  // ── Check monthly usage limit ──
+  const month = new Date().toISOString().slice(0, 7); // "2026-08"
+  const { data: usageRow } = await authed.client
+    .from('usage')
+    .select('count')
+    .eq('user_id', authed.userId)
+    .eq('month', month)
+    .maybeSingle();
+
+  if ((usageRow?.count ?? 0) >= FREE_LIMIT) {
+    return NextResponse.json(
+      { error: `You've used all ${FREE_LIMIT} free repurposes for this month. Your limit resets on the 1st.` },
+      { status: 429 },
+    );
   }
 
-  const cleanContent = content.trim().slice(0, 8000); // hard cap
-
-  /* ── Call Gemini ── */
+  // ── Call Gemini ──
   const url = `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
   const prompt = buildPrompt(cleanContent, cleanFormats, tone);
 
@@ -146,49 +159,39 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Could not reach AI service. Check your connection.' }, { status: 502 });
   }
 
-  /* ── Extract text from response ── */
+  // ── Extract and parse ──
   const rawText = geminiRaw?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!rawText) {
     console.error('[repurpose] empty Gemini response:', JSON.stringify(geminiRaw).slice(0, 400));
     return NextResponse.json({ error: 'AI returned an empty response. Please try again.' }, { status: 502 });
   }
 
-  /* ── Parse JSON from model output ── */
   let parsed: { results?: GeminiResult[] };
-  try {
-    parsed = JSON.parse(rawText) as { results?: GeminiResult[] };
-  } catch {
+  try { parsed = JSON.parse(rawText) as { results?: GeminiResult[] }; } catch {
     console.error('[repurpose] JSON parse error. Raw:', rawText.slice(0, 400));
     return NextResponse.json({ error: 'AI response was malformed. Please try again.' }, { status: 502 });
   }
 
-  if (!Array.isArray(parsed?.results)) {
+  if (!Array.isArray(parsed?.results))
     return NextResponse.json({ error: 'Unexpected AI response shape.' }, { status: 502 });
-  }
 
-  /* ── Shape results ── */
   const results: RepurposeResult[] = parsed.results
     .filter((r): r is GeminiResult => !!r?.format && typeof r.content === 'string')
     .map((r) => {
       const meta = FORMAT_META[r.format] ?? { type: r.format, platform: 'Unknown' };
-      return {
-        id: r.format,
-        type: meta.type,
-        platform: meta.platform,
-        content: r.content.trim(),
-      };
+      return { id: r.format, type: meta.type, platform: meta.platform, content: r.content.trim() };
     });
 
-  if (results.length === 0) {
+  if (results.length === 0)
     return NextResponse.json({ error: 'AI did not generate any content. Please try again.' }, { status: 502 });
-  }
 
-  /* ── Persist to history ── */
+  // ── Persist to history ──
   let historyId: string | undefined;
   try {
-    const { data, error: dbErr } = await supabase
+    const { data, error: dbErr } = await authed.client
       .from('history')
       .insert({
+        user_id: authed.userId,
         original_content: cleanContent,
         selected_formats: cleanFormats,
         tone,
@@ -197,9 +200,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .select('id')
       .single();
     if (!dbErr && data) historyId = data.id as string;
-  } catch {
-    // Non-fatal: generation succeeded even if DB write fails
-  }
+  } catch { /* non-fatal */ }
+
+  // ── Increment usage (atomic upsert via SECURITY DEFINER function) ──
+  try {
+    await authed.client.rpc('increment_usage', { p_month: month });
+  } catch { /* non-fatal */ }
 
   return NextResponse.json({ results, historyId });
 }
