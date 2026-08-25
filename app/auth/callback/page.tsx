@@ -14,12 +14,18 @@ function CallbackHandler() {
     const next = searchParams.get('next') ?? '/';
 
     if (!code) {
+      sessionStorage.setItem('auth_error', 'Authentication failed. Please try again.');
       router.replace('/login');
       return;
     }
 
     supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-      router.replace(error ? '/login' : next);
+      if (error) {
+        sessionStorage.setItem('auth_error', 'Authentication failed. Please try again.');
+        router.replace('/login');
+      } else {
+        router.replace(next);
+      }
     });
   }, [router, searchParams]);
 

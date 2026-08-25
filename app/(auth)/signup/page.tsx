@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
+import { OAuthButtons, OrDivider } from '@/components/oauth-buttons';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -19,6 +20,15 @@ export default function SignupPage() {
   useEffect(() => {
     if (!loading && user) router.replace('/');
   }, [user, loading, router]);
+
+  // Pick up any error forwarded from the auth callback page
+  useEffect(() => {
+    const stored = sessionStorage.getItem('auth_error');
+    if (stored) {
+      setError(stored);
+      sessionStorage.removeItem('auth_error');
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,7 +112,15 @@ export default function SignupPage() {
               Create your account
             </h1>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            {/* OAuth */}
+            <div className="mb-5">
+              <OAuthButtons />
+            </div>
+
+            <OrDivider />
+
+            {/* Email / password form */}
+            <form onSubmit={handleSubmit} className="space-y-4 mt-5">
               <Field label="Email">
                 <input
                   type="email"
